@@ -31,6 +31,13 @@ pub(crate) struct TestBuildFilter {
     #[arg(long)]
     pub(crate) doctests: bool,
 
+    /// Only build and run doctests (experimental).
+    ///
+    /// Like `cargo test --doc`: other test targets are not built. Implies
+    /// `--doctests`.
+    #[arg(long)]
+    pub(crate) doc: bool,
+
     /// Run ignored tests.
     #[arg(long, value_enum, value_name = "WHICH")]
     run_ignored: Option<RunIgnoredOpt>,
@@ -101,6 +108,11 @@ pub(crate) struct TestBuildFilter {
 }
 
 impl TestBuildFilter {
+    /// Returns true if doctests should be built and run.
+    pub(crate) fn doctests_enabled(&self) -> bool {
+        self.doctests || self.doc
+    }
+
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn compute_test_list<'g>(
         &self,

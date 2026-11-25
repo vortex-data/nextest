@@ -4,7 +4,7 @@
 //! Run and bench command options and execution.
 
 use super::{
-    base::BaseApp,
+    base::{BaseApp, ResolvedBuildScope},
     filter::TestBuildFilter,
     value_enums::{
         FinalStatusLevelOpt, FlakyResultOpt, MessageFormat, NoTestsBehaviorOpt, ShowProgressOpt,
@@ -31,9 +31,9 @@ use nextest_runner::{
     input::InputHandlerKind,
     list::{BinaryList, ListProgressOptions, TestExecuteContext, TestList},
     record::{
-        ComputedRerunInfo, PortableRecording, RecordOpts, RecordReader, RecordRetentionPolicy,
-        RecordSession, RecordSessionConfig, RecordedBuildScope, RerunRootInfo,
-        RunIdOrRecordingSelector, RunIdSelector, RunStore, STORE_FORMAT_VERSION,
+        BuildKind, ComputedRerunInfo, PortableRecording, RecordOpts, RecordReader,
+        RecordRetentionPolicy, RecordSession, RecordSessionConfig, RecordedBuildScope,
+        RerunRootInfo, RunIdOrRecordingSelector, RunIdSelector, RunStore, STORE_FORMAT_VERSION,
         Styles as RecordStyles, records_state_dir,
     },
     redact::Redactor,
@@ -885,7 +885,7 @@ impl App {
         show_progress: ShowProgress,
     ) -> Result<TestList<'_>> {
         let env = EnvironmentMap::new(&self.base.cargo_configs);
-        let doctest_artifacts = if self.build_filter.doctests {
+        let doctest_artifacts = if self.build_filter.doctests_enabled() {
             if test_filter.mode() == NextestRunMode::Benchmark {
                 return Err(ExpectedError::DoctestsUnsupported {
                     reason: "benchmarks",
@@ -908,6 +908,25 @@ impl App {
             self.list_progress_options(show_progress),
             doctest_artifacts,
         )
+    }
+
+    /// Builds the binary list for test runs, honoring `--doc`.
+    ///
+    /// With `--doc`, no test binaries are built: only doctests are run, and
+    /// they're built separately by [`Self::build_test_list`].
+    pub(crate) fn build_binary_list_with_scope(
+        &self,
+        build_scope: ResolvedBuildScope<'_>,
+    ) -> Result<(Arc<BinaryList>, BuildKind)> {
+        if self.build_filter.doc {
+            if self.base.reuse_build.binaries_metadata().is_some() {
+                return Err(ExpectedError::DoctestsUnsupported {
+                    reason: "reused builds",
+                });
+            }
+            return Ok((self.base.empty_binary_list(), BuildKind::Cargo));
+        }
+        self.base.build_binary_list_with_scope("test", build_scope)
     }
 
     fn list_progress_options(&self, show_progress: ShowProgress) -> ListProgressOptions {
@@ -1052,9 +1071,7 @@ impl App {
         // validation is complete.
         let rerun_build_scope = rerun_state.as_ref().map(|s| &s.root_info.build_scope.scope);
         let build_scope = self.base.resolve_build_scope(rerun_build_scope);
-        let (binary_list, build_kind) = self
-            .base
-            .build_binary_list_with_scope("test", build_scope)?;
+        let (binary_list, build_kind) = self.build_binary_list_with_scope(build_scope)?;
         let build_platforms = &binary_list.rust_build_meta.build_platforms.clone();
         let double_spawn = self.base.load_double_spawn();
         let target_runner = self.base.load_runner(build_platforms);

@@ -31,7 +31,7 @@ use nextest_runner::{
     double_spawn::DoubleSpawnInfo,
     errors::{ConfigParseError, DoctestError},
     helpers::plural,
-    list::{BinaryList, RustTestArtifact},
+    list::{BinaryList, BinaryListBuilder, RustTestArtifact},
     platform::BuildPlatforms,
     record::BuildKind,
     reuse_build::ReuseBuildInfo,
@@ -419,6 +419,12 @@ impl BaseApp {
         let (binary_list, _build_kind) =
             self.build_binary_list_with_scope(cargo_command, self.resolve_build_scope(None))?;
         Ok(binary_list)
+    }
+
+    /// Returns a binary list with no binaries, for runs that only include
+    /// doctests.
+    pub(crate) fn empty_binary_list(&self) -> Arc<BinaryList> {
+        Arc::new(BinaryListBuilder::new(self.graph(), self.build_platforms.clone()).finish())
     }
 
     /// Builds the binary list with the given build scope.

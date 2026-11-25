@@ -154,16 +154,44 @@ fn test_doctests() {
             EXPECTED.iter().map(|(name, _)| (*name, false)).collect();
         expected_listed.insert("ignored", true);
         assert_eq!(listed, expected_listed, "[{edition}] listed doctests");
+        assert!(
+            list.rust_suites
+                .values()
+                .any(|suite| suite.binary.kind == RustTestBinaryKind::LIB),
+            "[{edition}] --doctests also lists unit tests"
+        );
+
+        let output = CargoNextestCli::for_test(&env_info)
+            .args([
+                "--manifest-path",
+                manifest_path.as_str(),
+                "list",
+                "--doc",
+                "--message-format",
+                "json",
+            ])
+            .env_remove("RUSTFLAGS")
+            .output();
+        let list = output.decode_test_list_json().unwrap();
+        let kinds: Vec<_> = list
+            .rust_suites
+            .values()
+            .map(|suite| suite.binary.kind.clone())
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![RustTestBinaryKind::DOCTEST],
+            "[{edition}] --doc lists only doctests"
+        );
 
         let output = CargoNextestCli::for_test(&env_info)
             .args([
                 "--manifest-path",
                 manifest_path.as_str(),
                 "run",
-                "--doctests",
+                // `--doc` runs only doctests, without building other tests.
+                "--doc",
                 "--no-fail-fast",
-                "-E",
-                "kind(doctest)",
             ])
             .env_remove("RUSTFLAGS")
             .unchecked(true)

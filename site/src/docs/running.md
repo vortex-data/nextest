@@ -79,6 +79,12 @@ Doctests are grouped into one suite per crate, with the [binary kind](filtersets
 cargo nextest run --doctests -E 'kind(doctest)'
 ```
 
+To run only doctests without building any other tests, like `cargo test --doc`, pass in `--doc` instead:
+
+```
+cargo nextest run --doc
+```
+
 This works on stable Rust. For details and current limitations, see the [design document](design/architecture/doctests.md).
 
 ## Failing fast

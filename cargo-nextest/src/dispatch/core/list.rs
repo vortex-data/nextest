@@ -98,7 +98,8 @@ impl App {
             .make_test_filter(NextestRunMode::Test, filter_exprs)?
             .test_filter;
 
-        let binary_list = self.base.build_binary_list("test")?;
+        let (binary_list, _) =
+            self.build_binary_list_with_scope(self.base.resolve_build_scope(None))?;
 
         let resolved_user_config =
             resolve_user_config(self.base.early_args.user_config_location())?;
@@ -225,7 +226,8 @@ impl App {
             .make_test_filter(NextestRunMode::Test, filter_exprs)?
             .test_filter;
 
-        let binary_list = self.base.build_binary_list("test")?;
+        let (binary_list, _) =
+            self.build_binary_list_with_scope(self.base.resolve_build_scope(None))?;
         let build_platforms = binary_list.rust_build_meta.build_platforms.clone();
 
         let double_spawn = self.base.load_double_spawn();
