@@ -12,7 +12,7 @@ use crate::{
         helpers::{acquire_graph_data, detect_build_platforms, runner_for_target},
     },
     helpers::{VersionReqKind, log_version_source},
-    output::{OutputContext, OutputWriter},
+    output::{Color, OutputContext, OutputWriter},
 };
 use camino::{Utf8Path, Utf8PathBuf};
 use guppy::graph::{BuildTargetId, PackageGraph};
@@ -42,10 +42,18 @@ use semver::Version;
 use std::{
     collections::BTreeSet,
     env::VarError,
+    io::{BufRead, BufReader, Write},
     sync::{Arc, OnceLock},
     time::Instant,
 };
 use tracing::{Level, debug, info, warn};
+
+/// Returns true if `line` is Cargo's `Doc-tests <crate>` status line.
+fn is_doc_tests_line(line: &[u8]) -> bool {
+    let line = String::from_utf8_lossy(line);
+    let stripped = strip_ansi_escapes::strip_str(&line);
+    stripped.trim_start().starts_with("Doc-tests ")
+}
 
 /// Base application state shared by core commands (run, list, bench, archive).
 pub(crate) struct BaseApp {
@@ -521,20 +529,55 @@ impl BaseApp {
         let capture_start = Instant::now();
         // Phase 1: have Cargo build libraries and tell us how it would invoke
         // rustdoc. Rustdoc is replaced by nextest, which only records.
-        let mut cargo_cli = CargoCli::new("test", self.manifest_path.as_deref(), self.output);
+        //
+        // Cargo's output is filtered (see below), so it writes to a pipe. Decide
+        // on color here, as Cargo would have for the terminal.
+        let mut cargo_output = self.output;
+        cargo_output.color = if self
+            .output
+            .color
+            .should_colorize(supports_color::Stream::Stderr)
+        {
+            Color::Always
+        } else {
+            Color::Never
+        };
+        let mut cargo_cli = CargoCli::new("test", self.manifest_path.as_deref(), cargo_output);
         cargo_cli.add_arg("--doc");
         cargo_cli.add_doctest_scope(&self.build_scope);
         cargo_cli.add_build_settings(&self.cargo_settings);
         let rustdoc = user_rustdoc();
-        let output = cargo_cli
+        let exec_err = |err| ExpectedError::build_exec_failed(cargo_cli.all_args(), err);
+        let reader = cargo_cli
             .to_expression()
             .env("RUSTDOC", current_exe.as_str())
             .env(DOCTEST_CAPTURE_DIR_ENV, capture_dir.as_str())
             .env(DOCTEST_REAL_RUSTDOC_ENV, &rustdoc)
-            .stdout_to_stderr()
+            .stderr_to_stdout()
             .unchecked()
-            .run()
-            .map_err(|err| ExpectedError::build_exec_failed(cargo_cli.all_args(), err))?;
+            .reader()
+            .map_err(exec_err)?;
+        // Cargo prints `Doc-tests <crate>` for each crate whose doctests it
+        // would run. Nothing runs at this point, so drop those lines and
+        // forward everything else (build progress, warnings, and errors).
+        let mut lines = BufReader::new(&reader);
+        let mut line = Vec::new();
+        let mut stderr = std::io::stderr().lock();
+        loop {
+            line.clear();
+            if lines.read_until(b'\n', &mut line).map_err(exec_err)? == 0 {
+                break;
+            }
+            if !is_doc_tests_line(&line) {
+                // Failing to write progress to stderr shouldn't fail the build.
+                _ = stderr.write_all(&line);
+            }
+        }
+        drop(stderr);
+        let output = reader
+            .try_wait()
+            .map_err(exec_err)?
+            .expect("child process should have exited after EOF");
         if !output.status.success() {
             return Err(ExpectedError::build_failed(
                 cargo_cli.all_args(),
@@ -724,6 +767,32 @@ mod helpers {
             }
 
             Ok(binary_list_builder.finish())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doc_tests_lines() {
+        for (line, expected) in [
+            (&b"   Doc-tests foo\n"[..], true),
+            (b"\x1b[1m\x1b[92m   Doc-tests\x1b[0m foo_bar\n", true),
+            (b"   Compiling foo v0.1.0\n", false),
+            (
+                b"warning: doc tests are not supported for crate type(s) `cdylib`\n",
+                false,
+            ),
+            (b"Doc-tests\n", false),
+        ] {
+            assert_eq!(
+                is_doc_tests_line(line),
+                expected,
+                "{:?}",
+                String::from_utf8_lossy(line)
+            );
         }
     }
 }

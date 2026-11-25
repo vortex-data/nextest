@@ -483,6 +483,7 @@ dependencies = [
  "semver",
  "serde_json",
  "shell-words",
+ "strip-ansi-escapes",
  "supports-color",
  "supports-hyperlinks",
  "supports-unicode",
