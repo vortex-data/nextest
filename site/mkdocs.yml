@@ -168,6 +168,7 @@ nav:
                 - "Signal handling": docs/design/architecture/signal-handling.md
                 - "Input handling": docs/design/architecture/input-handling.md
                 - docs/design/architecture/recording-runs.md
+                - docs/design/architecture/doctests.md
 
 markdown_extensions:
     # Python Markdown

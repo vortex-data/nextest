@@ -43,7 +43,7 @@ cargo nextest list
         cat src/outputs/list-output-verbose.ansi | ../scripts/strip-ansi.sh | ../scripts/strip-hyperlinks.sh
         ```
 
-[^doctest]: Doctests are currently [not supported](https://github.com/nextest-rs/nextest/issues/16) because of limitations in stable Rust. For now, run doctests in a separate step with `cargo test --doc`.
+[^doctest]: Doctests are not included by default. To also build and run doctests, pass in `--doctests` (experimental); see [_Running doctests_](running.md#running-doctests).
 
 ## Filtering tests by default
 

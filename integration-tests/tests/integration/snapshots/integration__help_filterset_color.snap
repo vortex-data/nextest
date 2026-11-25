@@ -111,7 +111,7 @@ Within a precedence group, operators bind from left to right.
 [1;4mBinary kinds[0m
 
 Accepted by the [36mkind()[0m operator, these binary kinds match the ones defined by
-Cargo.
+Cargo, along with [36mdoctest[0m.
 
 [32;1mlib[0m
     Unit tests for regular crates, typically in the [36msrc/[0m directory under
@@ -131,6 +131,10 @@ Cargo.
 
 [32;1mexample[0m
     Tests within examples (uncommon).
+
+[32;1mdoctest[0m
+    Doctests, if [34;4m[36m]8;;https://nexte.st/docs/running/#running-doctests\--doctests[0m]8;;\ is passed in. Each library's doctests form one
+    suite.
 
 [1;4mName matchers[0m
 

@@ -55,7 +55,31 @@ cargo nextest run <test-name1> <test-name2>...
 
 For more information, see [_Selecting tests_](selecting.md).
 
-[^doctest]: Doctests are currently [not supported](https://github.com/nextest-rs/nextest/issues/16) because of limitations in stable Rust. For now, run doctests in a separate step with `cargo test --doc`.
+[^doctest]: Doctests are not included by default. To also build and run doctests, pass in `--doctests` (experimental); see [_Running doctests_](#running-doctests) below.
+
+## Running doctests
+
+<!-- md:version 0.9.153 -->
+
+!!! warning "Experimental feature"
+
+    This feature is experimental. Its behavior and output may change.
+
+To also build and run doctests, pass in `--doctests`:
+
+```
+cargo nextest run --doctests
+```
+
+Each doctest runs as a separate test, in parallel with other doctests and other tests. Doctests are compiled for all crates in parallel too, unlike with `cargo test --doc`, which processes one crate at a time.
+
+Doctests are grouped into one suite per crate, with the [binary kind](filtersets/reference.md#binary-kinds) `doctest`. For example, to run only doctests:
+
+```
+cargo nextest run --doctests -E 'kind(doctest)'
+```
+
+This works on stable Rust. For details and current limitations, see the [design document](design/architecture/doctests.md).
 
 ## Failing fast
 

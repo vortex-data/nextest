@@ -90,7 +90,7 @@ Within a precedence group, operators bind from left to right.
 
 ### Binary kinds
 
-Accepted by the `kind()` operator, these binary kinds match the ones defined by Cargo.
+Accepted by the `kind()` operator, these binary kinds match the ones defined by Cargo, along with `doctest`.
 
 `lib`
 : Unit tests for regular crates, typically in the `src/` directory under `#[cfg(test)]`.
@@ -109,6 +109,9 @@ Accepted by the `kind()` operator, these binary kinds match the ones defined by 
 
 `example`
 : Tests within examples (uncommon).
+
+`doctest`
+: Doctests, if [`--doctests`](../running.md#running-doctests) is passed in. Each library's doctests form one suite.
 
 ### Name matchers
 
