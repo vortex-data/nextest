@@ -885,6 +885,17 @@ impl App {
         show_progress: ShowProgress,
     ) -> Result<TestList<'_>> {
         let env = EnvironmentMap::new(&self.base.cargo_configs);
+        let doctest_artifacts = if self.build_filter.doctests {
+            if test_filter.mode() == NextestRunMode::Benchmark {
+                return Err(ExpectedError::DoctestsUnsupported {
+                    reason: "benchmarks",
+                });
+            }
+            self.base
+                .build_doctest_artifacts(&binary_list.rust_build_meta.target_directory)?
+        } else {
+            Vec::new()
+        };
         self.build_filter.compute_test_list(
             ctx,
             self.base.graph(),
@@ -895,6 +906,7 @@ impl App {
             profile,
             &self.base.reuse_build,
             self.list_progress_options(show_progress),
+            doctest_artifacts,
         )
     }
 

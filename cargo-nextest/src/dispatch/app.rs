@@ -46,6 +46,9 @@ impl CargoNextestApp {
             #[cfg(unix)]
             // Double-spawned processes should never use coloring.
             NextestSubcommand::DoubleSpawn(_) => OutputContext::color_never_init(),
+            NextestSubcommand::DoctestRuntool(_) | NextestSubcommand::DoctestShim(_) => {
+                OutputContext::color_never_init()
+            }
         }
     }
 
@@ -69,6 +72,8 @@ impl CargoNextestApp {
             }
             #[cfg(unix)]
             NextestSubcommand::DoubleSpawn(opts) => opts.exec(output),
+            NextestSubcommand::DoctestRuntool(opts) => Ok(opts.exec()),
+            NextestSubcommand::DoctestShim(opts) => Ok(opts.exec()),
         }
     }
 }
@@ -83,6 +88,12 @@ enum NextestSubcommand {
     #[cfg(unix)]
     #[command(name = nextest_runner::double_spawn::DoubleSpawnInfo::SUBCOMMAND_NAME, hide = true)]
     DoubleSpawn(crate::double_spawn::DoubleSpawnOpts),
+    /// Private command, invoked by rustdoc with each compiled doctest.
+    #[command(name = nextest_runner::doctest::DOCTEST_RUNTOOL_SUBCOMMAND, hide = true)]
+    DoctestRuntool(crate::doctest::DoctestRuntoolOpts),
+    /// Private command, used to list and run doctests.
+    #[command(name = nextest_runner::doctest::DOCTEST_SHIM_SUBCOMMAND, hide = true)]
+    DoctestShim(crate::doctest::DoctestShimOpts),
 }
 
 /// Main app options (under `cargo nextest`).

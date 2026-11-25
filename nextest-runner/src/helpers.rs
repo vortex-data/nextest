@@ -125,6 +125,11 @@ pub mod plural {
         }
     }
 
+    /// Returns "crate" if `count` is 1, otherwise "crates".
+    pub fn crates_str(count: usize) -> &'static str {
+        if count == 1 { "crate" } else { "crates" }
+    }
+
     /// Returns "library" if `count` is 1, otherwise "libraries".
     pub fn libraries_str(count: usize) -> &'static str {
         if count == 1 { "library" } else { "libraries" }

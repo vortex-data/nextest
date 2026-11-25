@@ -15,6 +15,10 @@ use clap::{CommandFactory, Parser};
 /// help), and dispatches to the appropriate command. Both the main binary and
 /// the integration test duplicate use this.
 pub fn main_impl() -> ! {
+    // When Cargo runs nextest as rustdoc, behave like rustdoc rather than
+    // parsing arguments.
+    crate::doctest::maybe_act_as_rustdoc();
+
     let cli_args: Vec<_> = std::env::args_os()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();

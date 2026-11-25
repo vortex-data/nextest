@@ -226,6 +226,13 @@ pub enum ExpectedError {
         #[source]
         err: CreateTestListError,
     },
+    #[error("doctest error")]
+    DoctestError {
+        #[source]
+        err: DoctestError,
+    },
+    #[error("doctests are not supported with {reason}")]
+    DoctestsUnsupported { reason: &'static str },
     #[error("failed to execute build command")]
     BuildExecFailed {
         command: String,
@@ -655,9 +662,10 @@ impl ExpectedError {
             Self::DoubleSpawnParseArgsError { .. } | Self::DoubleSpawnExecError { .. } => {
                 NextestExitCode::DOUBLE_SPAWN_ERROR
             }
-            Self::FromMessagesError { .. } | Self::CreateTestListError { .. } => {
-                NextestExitCode::TEST_LIST_CREATION_FAILED
-            }
+            Self::FromMessagesError { .. }
+            | Self::CreateTestListError { .. }
+            | Self::DoctestError { .. } => NextestExitCode::TEST_LIST_CREATION_FAILED,
+            Self::DoctestsUnsupported { .. } => NextestExitCode::SETUP_ERROR,
             Self::BuildExecFailed { .. } | Self::BuildFailed { .. } => {
                 NextestExitCode::BUILD_FAILED
             }
@@ -1073,6 +1081,14 @@ impl ExpectedError {
             Self::CreateTestListError { err } => {
                 error!("creating test list failed");
                 Some(err as &dyn Error)
+            }
+            Self::DoctestError { err } => {
+                error!("preparing doctests failed");
+                Some(err as &dyn Error)
+            }
+            Self::DoctestsUnsupported { reason } => {
+                error!("--doctests is not supported with {reason}");
+                None
             }
             Self::BuildExecFailed { command, err } => {
                 error!("failed to execute `{}`", command.style(styles.bold));

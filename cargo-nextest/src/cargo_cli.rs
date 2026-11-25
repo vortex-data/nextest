@@ -311,6 +311,16 @@ pub(crate) struct CargoBuildSettings {
     unstable_flags: Vec<String>,
 }
 
+impl CargoBuildSettings {
+    /// Returns the number of build jobs, if a positive count was specified.
+    pub(crate) fn build_jobs(&self) -> Option<usize> {
+        self.build_jobs
+            .as_deref()
+            .and_then(|jobs| jobs.parse::<usize>().ok())
+            .filter(|&jobs| jobs > 0)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct CargoCli<'a> {
     cargo_path: Utf8PathBuf,
@@ -369,6 +379,22 @@ impl<'a> CargoCli<'a> {
     /// command.
     pub(crate) fn add_build_scope(&mut self, scope: &BuildScope) -> &mut Self {
         for flag in scope.cargo_flags() {
+            match flag {
+                CargoFlag::Bare(arg) => {
+                    self.add_arg(arg);
+                }
+                CargoFlag::Valued { .. } => {
+                    self.add_owned_arg(flag.to_cargo_arg());
+                }
+            }
+        }
+        self
+    }
+
+    /// Adds the parts of a build scope that apply to `cargo test --doc`
+    /// (package and feature selection) to the command.
+    pub(crate) fn add_doctest_scope(&mut self, scope: &BuildScope) -> &mut Self {
+        for flag in scope.doctest_cargo_flags() {
             match flag {
                 CargoFlag::Bare(arg) => {
                     self.add_arg(arg);

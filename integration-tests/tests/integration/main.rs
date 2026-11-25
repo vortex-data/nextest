@@ -37,6 +37,7 @@ use target_spec::{Platform, summaries::TargetFeaturesSummary};
 
 mod cargo_message_format;
 mod config_paths;
+mod doctests;
 mod fixtures;
 mod interceptor;
 mod large_alloc;

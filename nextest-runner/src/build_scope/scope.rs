@@ -91,6 +91,17 @@ impl BuildScope {
         flags
     }
 
+    /// Returns flags to provide to `cargo test --doc`.
+    ///
+    /// Target selection flags are omitted, since Cargo rejects them alongside
+    /// `--doc`.
+    pub fn doctest_cargo_flags(&self) -> Vec<CargoFlag<'_>> {
+        let mut flags = Vec::new();
+        self.packages.push_cargo_flags(&mut flags);
+        self.features.push_cargo_flags(&mut flags);
+        flags
+    }
+
     /// Returns the set of arguments to pass to Cargo.
     ///
     /// Flags with values are always returned as a single `--flag=value`

@@ -89,6 +89,14 @@ pub struct RustTestArtifact<'g> {
 
     /// The platform for which this test artifact was built.
     pub build_platform: BuildPlatform,
+
+    /// A program and arguments to run `binary_path` with, if `binary_path` is
+    /// not itself executable.
+    ///
+    /// This is used for synthesized suites such as doctests, where
+    /// `binary_path` is a manifest interpreted by a shim. If non-empty, target
+    /// runners are not applied.
+    pub exec_prefix: Vec<String>,
 }
 
 impl<'g> RustTestArtifact<'g> {
@@ -161,6 +169,7 @@ impl<'g> RustTestArtifact<'g> {
                 cwd,
                 non_test_binaries,
                 build_platform: binary.build_platform,
+                exec_prefix: Vec::new(),
             })
         }
 
@@ -191,6 +200,7 @@ impl<'g> RustTestArtifact<'g> {
             non_test_binaries,
             cwd,
             build_platform,
+            exec_prefix,
         } = self;
 
         RustTestSuite {
@@ -202,6 +212,7 @@ impl<'g> RustTestArtifact<'g> {
             non_test_binaries,
             cwd,
             build_platform,
+            exec_prefix,
             status,
         }
     }
@@ -534,6 +545,8 @@ impl<'g> TestList<'g> {
                 non_test_binaries: BTreeSet::new(), // Not stored in summary.
                 cwd: suite_summary.cwd.clone(),
                 build_platform: suite_summary.binary.build_platform,
+                // Summaries are only used for display, never to run tests.
+                exec_prefix: Vec::new(),
                 status,
             };
 
@@ -1329,6 +1342,10 @@ pub struct RustTestSuite<'g> {
     /// Non-test binaries corresponding to this test suite (name, path).
     pub non_test_binaries: BTreeSet<(String, Utf8PathBuf)>,
 
+    /// A program and arguments to run `binary_path` with; see
+    /// [`RustTestArtifact::exec_prefix`].
+    pub exec_prefix: Vec<String>,
+
     /// Test suite status and test case names.
     pub status: RustTestSuiteStatus,
 }
@@ -1394,10 +1411,15 @@ impl RustTestArtifact<'_> {
         let mut cli = TestCommandCli::default();
         cli.apply_wrappers(
             list_settings.list_wrapper(),
-            runner,
+            if self.exec_prefix.is_empty() {
+                runner
+            } else {
+                None
+            },
             lctx.workspace_root,
             &lctx.rust_build_meta.target_directory,
         );
+        cli.extend(self.exec_prefix.iter().map(String::as_str));
         cli.push(self.binary_path.as_str());
 
         cli.extend(["--list", "--format", "terse"]);
@@ -1694,10 +1716,15 @@ impl<'a> TestInstance<'a> {
         let mut cli = TestCommandCli::default();
         cli.apply_wrappers(
             wrapper_script,
-            platform_runner,
+            if self.suite_info.exec_prefix.is_empty() {
+                platform_runner
+            } else {
+                None
+            },
             test_list.workspace_root(),
             &test_list.rust_build_meta().target_directory,
         );
+        cli.extend(self.suite_info.exec_prefix.iter().map(String::as_str));
         cli.push(self.suite_info.binary_path.as_str());
 
         cli.extend(["--exact", self.name.as_str(), "--nocapture"]);
@@ -2031,6 +2058,7 @@ mod tests {
             kind: RustTestBinaryKind::LIB,
             non_test_binaries: BTreeSet::new(),
             build_platform: BuildPlatform::Target,
+            exec_prefix: Vec::new(),
         };
 
         let skipped_binary_name = "skipped-binary".to_owned();
@@ -2044,6 +2072,7 @@ mod tests {
             kind: RustTestBinaryKind::PROC_MACRO,
             non_test_binaries: BTreeSet::new(),
             build_platform: BuildPlatform::Host,
+            exec_prefix: Vec::new(),
         };
 
         let fake_triple = TargetTriple {
@@ -2150,6 +2179,7 @@ mod tests {
                     },
                     cwd: fake_cwd.clone(),
                     build_platform: BuildPlatform::Target,
+                    exec_prefix: Vec::new(),
                     package: package_metadata(),
                     binary_name: fake_binary_name,
                     binary_id: fake_binary_id,
@@ -2163,6 +2193,7 @@ mod tests {
                     },
                     cwd: fake_cwd,
                     build_platform: BuildPlatform::Host,
+                    exec_prefix: Vec::new(),
                     package: package_metadata(),
                     binary_name: skipped_binary_name,
                     binary_id: skipped_binary_id,
@@ -2400,6 +2431,7 @@ mod tests {
             kind: RustTestBinaryKind::LIB,
             non_test_binaries: BTreeSet::new(),
             build_platform: BuildPlatform::Target,
+            exec_prefix: Vec::new(),
         };
 
         let fake_host_libdir = "/home/fake/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib";
@@ -2979,6 +3011,7 @@ mod tests {
                     kind: RustTestBinaryKind::LIB,
                     non_test_binaries: BTreeSet::new(),
                     build_platform: BuildPlatform::Target,
+                    exec_prefix: Vec::new(),
                 },
                 test_cases: vec![
                     ParsedTestCase {

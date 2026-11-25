@@ -253,6 +253,12 @@ impl RustTestBinaryKind {
 
     /// The "proc-macro" kind, used for tests within procedural macros.
     pub const PROC_MACRO: Self = Self::new_const("proc-macro");
+
+    /// The "doctest" kind, used for documentation tests within a library.
+    ///
+    /// Doctest suites are synthesized by nextest rather than built by Cargo as
+    /// a single binary.
+    pub const DOCTEST: Self = Self::new_const("doctest");
 }
 
 impl fmt::Display for RustTestBinaryKind {

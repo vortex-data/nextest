@@ -23,6 +23,14 @@ use std::sync::Arc;
 #[derive(Debug, Args)]
 #[command(next_help_heading = "Filter options")]
 pub(crate) struct TestBuildFilter {
+    /// Also build and run doctests (experimental).
+    ///
+    /// Each doctest becomes a separate test, so doctests run in parallel with
+    /// each other and with other tests. Doctests are in suites of kind
+    /// `doctest`, so they can be selected with `-E 'kind(doctest)'`.
+    #[arg(long)]
+    pub(crate) doctests: bool,
+
     /// Run ignored tests.
     #[arg(long, value_enum, value_name = "WHICH")]
     run_ignored: Option<RunIgnoredOpt>,
@@ -105,6 +113,7 @@ impl TestBuildFilter {
         profile: &EvaluatableProfile<'_>,
         reuse_build: &ReuseBuildInfo,
         list_progress_options: ListProgressOptions,
+        doctest_artifacts: Vec<RustTestArtifact<'g>>,
     ) -> Result<TestList<'g>> {
         let path_mapper = make_path_mapper(
             reuse_build,
@@ -122,13 +131,14 @@ impl TestBuildFilter {
         };
 
         let rust_build_meta = binary_list.rust_build_meta.map_paths(&path_mapper);
-        let test_artifacts = RustTestArtifact::from_binary_list(
+        let mut test_artifacts = RustTestArtifact::from_binary_list(
             graph,
             binary_list,
             &rust_build_meta,
             &path_mapper,
             self.platform_filter.into(),
         )?;
+        test_artifacts.extend(doctest_artifacts);
         TestList::new(
             ctx,
             test_artifacts,

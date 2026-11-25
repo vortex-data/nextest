@@ -33,6 +33,7 @@
 
 mod cargo_cli;
 mod dispatch;
+mod doctest;
 #[cfg(unix)]
 mod double_spawn;
 mod errors;

@@ -3199,6 +3199,129 @@ pub enum TestListFromSummaryError {
     RustBuildMeta(#[source] RustBuildMetaParseError),
 }
 
+/// An error that occurred while capturing, compiling, or running doctests.
+///
+/// Returned by functions in the [`doctest`](crate::doctest) module.
+#[derive(Debug, Error)]
+pub enum DoctestError {
+    /// An I/O error occurred while operating on a path.
+    #[error("I/O error at `{path}`")]
+    Io {
+        /// The path being operated on.
+        path: Utf8PathBuf,
+
+        /// The underlying error.
+        #[source]
+        error: std::io::Error,
+    },
+
+    /// A JSON file could not be read or written.
+    #[error("error (de)serializing JSON at `{path}`")]
+    Json {
+        /// The path being operated on.
+        path: Utf8PathBuf,
+
+        /// The underlying error.
+        #[source]
+        error: serde_json::Error,
+    },
+
+    /// A path, argument, or environment variable was not valid UTF-8.
+    #[error("{what} is not valid UTF-8: {value:?}")]
+    NonUtf8 {
+        /// A description of the value.
+        what: &'static str,
+
+        /// The lossy value.
+        value: String,
+    },
+
+    /// The rustdoc invocation recorded from Cargo was missing a required argument.
+    #[error("rustdoc invocation `{path}` is missing the `{arg}` argument")]
+    MissingArgument {
+        /// The path to the recorded invocation.
+        path: Utf8PathBuf,
+
+        /// The missing argument.
+        arg: &'static str,
+    },
+
+    /// Cargo passed a `--test-runtool` to rustdoc, which means a target runner
+    /// is configured.
+    #[error(
+        "doctests for crate `{crate_name}` use a target runner \
+         (Cargo passed `--test-runtool` to rustdoc), which is not supported by nextest"
+    )]
+    TargetRunnerUnsupported {
+        /// The name of the crate.
+        crate_name: String,
+    },
+
+    /// A rustdoc process could not be spawned.
+    #[error("failed to spawn `{program}` for crate `{crate_name}`")]
+    RustdocSpawn {
+        /// The program that was spawned.
+        program: String,
+
+        /// The name of the crate.
+        crate_name: String,
+
+        /// The underlying error.
+        #[source]
+        error: std::io::Error,
+    },
+
+    /// A rustdoc process failed.
+    #[error(
+        "rustdoc failed while {action} doctests for crate `{crate_name}` ({})\n\
+         --- stdout:\n{stdout}\n--- stderr:\n{stderr}",
+        display_exited_with(*status)
+    )]
+    RustdocFailed {
+        /// What rustdoc was doing.
+        action: &'static str,
+
+        /// The name of the crate.
+        crate_name: String,
+
+        /// The exit status.
+        status: ExitStatus,
+
+        /// Standard output (lossily decoded).
+        stdout: String,
+
+        /// Standard error (lossily decoded).
+        stderr: String,
+    },
+
+    /// The generated rustdoc runner for merged doctests could not be parsed.
+    #[error("failed to parse merged doctest runner at `{path}`: {reason}")]
+    RunnerParse {
+        /// The path to the runner source.
+        path: Utf8PathBuf,
+
+        /// The reason parsing failed.
+        reason: String,
+    },
+
+    /// The package that a set of doctests belongs to was not found.
+    #[error("doctests for crate `{crate_name}` refer to unknown package at `{manifest_path}`")]
+    PackageNotFound {
+        /// The name of the crate.
+        crate_name: String,
+
+        /// The manifest path that was looked up.
+        manifest_path: Utf8PathBuf,
+    },
+
+    /// The doctest shim was invoked with arguments it does not understand.
+    #[error("invalid arguments to the doctest shim: {reason}")]
+    ShimArgs {
+        /// The reason the arguments were invalid.
+        reason: String,
+    },
+}
+
 #[cfg(feature = "self-update")]
 mod self_update_errors {
     use super::*;

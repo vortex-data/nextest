@@ -5,7 +5,7 @@
 
 use crate::{
     ExpectedError, Result, ReuseBuildKind,
-    cargo_cli::CargoBuildSettings,
+    cargo_cli::{CargoBuildSettings, CargoCli},
     dispatch::{
         EarlyArgs,
         common::ConfigOpts,
@@ -14,19 +14,24 @@ use crate::{
     helpers::{VersionReqKind, log_version_source},
     output::{OutputContext, OutputWriter},
 };
-use camino::Utf8PathBuf;
-use guppy::graph::PackageGraph;
+use camino::{Utf8Path, Utf8PathBuf};
+use guppy::graph::{BuildTargetId, PackageGraph};
 use nextest_filtering::ParseContext;
 use nextest_runner::{
     build_scope::BuildScope,
     cargo_config::CargoConfigs,
     config::core::{
         ConfigExperimental, ConfigPaths, EarlyProfile, ExperimentalConfig, NextestConfig,
-        NextestVersionConfig, NextestVersionEval, VersionOnlyConfig,
+        NextestVersionConfig, NextestVersionEval, VersionOnlyConfig, get_num_cpus,
+    },
+    doctest::{
+        DOCTEST_CAPTURE_DIR_ENV, DOCTEST_REAL_RUSTDOC_ENV, DoctestCompiler,
+        read_rustdoc_invocations, user_rustdoc,
     },
     double_spawn::DoubleSpawnInfo,
-    errors::ConfigParseError,
-    list::BinaryList,
+    errors::{ConfigParseError, DoctestError},
+    helpers::plural,
+    list::{BinaryList, RustTestArtifact},
     platform::BuildPlatforms,
     record::BuildKind,
     reuse_build::ReuseBuildInfo,
@@ -38,8 +43,9 @@ use std::{
     collections::BTreeSet,
     env::VarError,
     sync::{Arc, OnceLock},
+    time::Instant,
 };
-use tracing::{Level, info, warn};
+use tracing::{Level, debug, info, warn};
 
 /// Base application state shared by core commands (run, list, bench, archive).
 pub(crate) struct BaseApp {
@@ -452,6 +458,110 @@ impl BaseApp {
         )?;
 
         Ok((Arc::new(binary_list), BuildKind::Cargo))
+    }
+
+    /// Builds doctests: captures the rustdoc invocations Cargo would make, then
+    /// compiles doctests for each crate in parallel.
+    ///
+    /// See the [`nextest_runner::doctest`] module for how this works.
+    pub(crate) fn build_doctest_artifacts(
+        &self,
+        target_dir: &Utf8Path,
+    ) -> Result<Vec<RustTestArtifact<'_>>> {
+        if self.reuse_build.binaries_metadata().is_some() {
+            return Err(ExpectedError::DoctestsUnsupported {
+                reason: "reused builds",
+            });
+        }
+        let doctest_err = |err| ExpectedError::DoctestError { err };
+        let io_err = |path: &Utf8Path| {
+            let path = path.to_owned();
+            move |error| ExpectedError::DoctestError {
+                err: DoctestError::Io { path, error },
+            }
+        };
+
+        // `cargo test --doc` fails if no selected package has a library. Skip
+        // doctests entirely in the common case of a workspace without any.
+        if !self
+            .graph()
+            .workspace()
+            .iter()
+            .any(|package| package.build_target(&BuildTargetId::Library).is_some())
+        {
+            debug!("no workspace member has a library, so there are no doctests");
+            return Ok(Vec::new());
+        }
+
+        let current_exe = std::env::current_exe()
+            .ok()
+            .and_then(|exe| Utf8PathBuf::try_from(exe).ok())
+            .ok_or(ExpectedError::DoctestsUnsupported {
+                reason: "a nextest binary whose path cannot be determined or is not UTF-8",
+            })?;
+
+        let doctest_dir = target_dir.join("nextest").join("doctests");
+        let capture_dir = doctest_dir.join("capture");
+        let compiled_dir = doctest_dir.join("compiled");
+        for dir in [&capture_dir, &compiled_dir] {
+            match std::fs::remove_dir_all(dir) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(io_err(dir)(error)),
+            }
+            std::fs::create_dir_all(dir).map_err(io_err(dir))?;
+        }
+
+        let capture_start = Instant::now();
+        // Phase 1: have Cargo build libraries and tell us how it would invoke
+        // rustdoc. Rustdoc is replaced by nextest, which only records.
+        let mut cargo_cli = CargoCli::new("test", self.manifest_path.as_deref(), self.output);
+        cargo_cli.add_arg("--doc");
+        cargo_cli.add_doctest_scope(&self.build_scope);
+        cargo_cli.add_build_settings(&self.cargo_settings);
+        let rustdoc = user_rustdoc();
+        let output = cargo_cli
+            .to_expression()
+            .env("RUSTDOC", current_exe.as_str())
+            .env(DOCTEST_CAPTURE_DIR_ENV, capture_dir.as_str())
+            .env(DOCTEST_REAL_RUSTDOC_ENV, &rustdoc)
+            .stdout_to_stderr()
+            .unchecked()
+            .run()
+            .map_err(|err| ExpectedError::build_exec_failed(cargo_cli.all_args(), err))?;
+        if !output.status.success() {
+            return Err(ExpectedError::build_failed(
+                cargo_cli.all_args(),
+                output.status.code(),
+            ));
+        }
+
+        debug!(
+            "captured rustdoc invocations in {:.2}s",
+            capture_start.elapsed().as_secs_f64()
+        );
+
+        // Phase 2: compile doctests for every crate in parallel.
+        let invocations = read_rustdoc_invocations(&capture_dir).map_err(doctest_err)?;
+        let jobs = self
+            .cargo_settings
+            .build_jobs()
+            .unwrap_or_else(get_num_cpus);
+        let crate_count = invocations.len();
+        info!(
+            "compiling doctests for {crate_count} {}",
+            plural::crates_str(crate_count),
+        );
+        let start = Instant::now();
+        let compiled = DoctestCompiler::new(rustdoc, current_exe.clone(), compiled_dir, jobs)
+            .compile_all(invocations)
+            .map_err(doctest_err)?;
+        info!(
+            "compiled doctests for {crate_count} {} in {:.2}s",
+            plural::crates_str(crate_count),
+            start.elapsed().as_secs_f64(),
+        );
+        RustTestArtifact::from_doctests(self.graph(), &compiled, &current_exe).map_err(doctest_err)
     }
 
     #[inline]
